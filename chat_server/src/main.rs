@@ -8,24 +8,44 @@ use hyper::{Request, Response};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod models;
-use models::*;
-
-use tokio::*;
+use crate::models::*;
 
 #[tokio::main()]
-async fn main() {
+async fn main() -> Result<(), Infallible> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3366));
 
-    let cache: HashMap<Uuid, Vec<(Uuid, String)>> = HashMap::new();
-    let service = make_service_fn(|conn: &AddrStream| async {
-        Ok::<_, Infallible>(service_fn(join_chat_room))
+    let cache: Arc<HashMap<u64, Vec<(Uuid, String)>>> = Arc::new(HashMap::new());
+
+    let service = make_service_fn(move |_conn: &AddrStream| {
+        let cache_clone = cache.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                let cache_clone = cache_clone.clone();
+                async move {
+                    let body = body::to_bytes(req.into_body()).await.unwrap();
+                    let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
+
+                    if req.does_room_exist(cache_clone.clone()) {
+                        Ok::<_, Infallible>(Response::new(Body::from("hello")))
+                    } else {
+                        Ok::<_, Infallible>(Response::new(Body::from("not hello")))
+                    }
+                }
+            }))
+        }
     });
 
     // TODO: Create Chat room
     let server = Server::bind(&addr).serve(service);
+    if let Err(e) = server.await {
+        eprintln!("server error: {}", e);
+    }
+
+    Ok(())
 }
 
 // async fn create_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -35,9 +55,4 @@ async fn main() {
 //     // Ok(Response::new())
 // }
 
-async fn join_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let body = body::to_bytes(req.into_body()).await.unwrap();
-    let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
-
-    Ok(Response::new(Body::empty()))
-}
+// async fn join_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {}

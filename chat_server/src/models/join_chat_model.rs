@@ -1,20 +1,14 @@
-use std::collections::HashMap;
-
+use super::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-pub trait DoesRoomExist {
-    fn does_room_exist(self, cache: &HashMap<Uuid, ()>) -> bool;
-}
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct JoinChatRequest {
-    pub room_id: Uuid,
-    pub user_id: Uuid,
+    pub room_id: u64,
+    pub user_id: u64,
 }
 
 impl DoesRoomExist for JoinChatRequest {
-    fn does_room_exist(self, cache: &HashMap<Uuid, ()>) -> bool {
+    fn does_room_exist(self, cache: Arc<HashMap<u64, Vec<(Uuid, String)>>>) -> bool {
         cache.contains_key(&self.room_id)
     }
 }
