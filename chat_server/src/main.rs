@@ -1,6 +1,6 @@
 use hyper::body;
-use hyper::body::{Body, Bytes};
-use hyper::header::*;
+use hyper::body::Body;
+// use hyper::header::*;
 use hyper::server::conn::AddrStream;
 use hyper::server::Server;
 use hyper::service::{make_service_fn, service_fn};
@@ -48,11 +48,15 @@ async fn main() -> Result<(), Infallible> {
     Ok(())
 }
 
-// async fn create_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
-//     let body = body::to_bytes(req.into()).await.unwrap();
-//     // let req: CreateChatRequest = serde_json::from_slice(&body).unwrap();
-//     // let room_id = req.room_id;
-//     // Ok(Response::new())
-// }
+async fn create_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let path = req.uri();
+    if path == "/get" {
+        println!("NO");
+    }
+    let body = body::to_bytes(req.into_body()).await.unwrap();
+    let req: JoinChatRequest = serde_json::from_slice(&body).unwrap();
+    // let room_id = req.room_id;
+    Ok(Response::new(Body::from("Hello")))
+}
 
 // async fn join_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {}
