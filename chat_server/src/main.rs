@@ -26,6 +26,13 @@ async fn main() {
     let server = Server::bind(&addr).serve(service);
 }
 
+// async fn create_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//     let body = body::to_bytes(req.into()).await.unwrap();
+//     // let req: CreateChatRequest = serde_json::from_slice(&body).unwrap();
+//     // let room_id = req.room_id;
+//     // Ok(Response::new())
+// }
+
 async fn join_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let body = body::to_bytes(req.into_body()).await.unwrap();
     let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
