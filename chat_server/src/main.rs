@@ -9,16 +9,18 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use uuid::Uuid;
+use tokio::sync::RwLock;
 
 mod models;
 use crate::models::*;
+
+type Cache = Arc<RwLock<HashMap<u64, Vec<(u64, String)>>>>;
 
 #[tokio::main()]
 async fn main() -> Result<(), Infallible> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3366));
 
-    let cache: Arc<HashMap<u64, Vec<(Uuid, String)>>> = Arc::new(HashMap::new());
+    let cache: Cache = Arc::new(RwLock::new(HashMap::new()));
 
     let service = make_service_fn(move |_conn: &AddrStream| {
         let cache_clone = cache.clone();
@@ -26,13 +28,10 @@ async fn main() -> Result<(), Infallible> {
             Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
                 let cache_clone = cache_clone.clone();
                 async move {
-                    let body = body::to_bytes(req.into_body()).await.unwrap();
-                    let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
-
-                    if req.does_room_exist(cache_clone.clone()) {
-                        Ok::<_, Infallible>(Response::new(Body::from("hello")))
-                    } else {
-                        Ok::<_, Infallible>(Response::new(Body::from("not hello")))
+                    match req.uri().path() {
+                        "/join" => join_chat_room(cache_clone, req).await,
+                        "/create" => create_chat_room(cache_clone, req).await,
+                        _ => Ok(Response::builder().status(404).body(Body::empty()).unwrap()),
                     }
                 }
             }))
@@ -48,15 +47,25 @@ async fn main() -> Result<(), Infallible> {
     Ok(())
 }
 
-async fn create_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn create_chat_room(cache: Cache, req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let path = req.uri();
-    if path == "/get" {
-        println!("NO");
+    if path != "/room" {
+        return Ok(Response::builder().status(404).body(Body::empty()).unwrap());
     }
+
     let body = body::to_bytes(req.into_body()).await.unwrap();
     let req: JoinChatRequest = serde_json::from_slice(&body).unwrap();
-    // let room_id = req.room_id;
-    Ok(Response::new(Body::from("Hello")))
+    let room_id = req.room_id;
+    cache.write().await.entry(room_id).or_insert(Vec::new());
+    Ok(Response::new(Body::from("Created")))
 }
 
-// async fn join_chat_room(req: Request<Body>) -> Result<Response<Body>, Infallible> {}
+async fn join_chat_room(cache: Cache, req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let body = body::to_bytes(req.into_body()).await.unwrap();
+    let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
+
+    if cache.read().await.contains_key(&req.room_id) {
+        return Ok::<_, Infallible>(Response::new(Body::from("Room does not exist")));
+    }
+    Ok::<_, Infallible>(Response::new(Body::from("Room exists")))
+}
