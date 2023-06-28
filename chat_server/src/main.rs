@@ -11,6 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[allow(unused_imports)]
 mod models;
 use crate::models::*;
 
@@ -48,15 +49,10 @@ async fn main() -> Result<(), Infallible> {
 }
 
 async fn create_chat_room(cache: Cache, req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let path = req.uri();
-    if path != "/room" {
-        return Ok(Response::builder().status(404).body(Body::empty()).unwrap());
-    }
-
     let body = body::to_bytes(req.into_body()).await.unwrap();
-    let req: JoinChatRequest = serde_json::from_slice(&body).unwrap();
-    let room_id = req.room_id;
-    cache.write().await.entry(room_id).or_insert(Vec::new());
+    let req: CreateChatRequest = serde_json::from_slice(&body).unwrap();
+    let user_id = req.user_id;
+    cache.write().await.entry(user_id).or_insert(Vec::new());
     Ok(Response::new(Body::from("Created")))
 }
 
