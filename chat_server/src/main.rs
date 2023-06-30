@@ -1,67 +1,44 @@
-use hyper::body;
-use hyper::body::Body;
-// use hyper::header::*;
-use hyper::server::conn::AddrStream;
-use hyper::server::Server;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Request, Response};
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use std::sync::Mutex;
 
-#[allow(unused_imports)]
 mod models;
-use crate::models::*;
+use models::*;
 
-type Cache = Arc<RwLock<HashMap<u64, Vec<(u64, String)>>>>;
+// type ReceivedMessage = (u64, String);
+// type UserMessages = Vec<ReceivedMessage>;
 
-#[tokio::main()]
-async fn main() -> Result<(), Infallible> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3366));
+// type WorldHistory = Vec<Cache>;
 
-    let cache: Cache = Arc::new(RwLock::new(HashMap::new()));
-
-    let service = make_service_fn(move |_conn: &AddrStream| {
-        let cache_clone = cache.clone();
-        async move {
-            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
-                let cache_clone = cache_clone.clone();
-                async move {
-                    match req.uri().path() {
-                        "/join" => join_chat_room(cache_clone, req).await,
-                        "/create" => create_chat_room(cache_clone, req).await,
-                        _ => Ok(Response::builder().status(404).body(Body::empty()).unwrap()),
-                    }
-                }
-            }))
-        }
-    });
-
-    // TODO: Create Chat room
-    let server = Server::bind(&addr).serve(service);
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
-    }
-
-    Ok(())
+pub struct Cache {
+    room_id: u64,
 }
 
-async fn create_chat_room(cache: Cache, req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let body = body::to_bytes(req.into_body()).await.unwrap();
-    let req: CreateChatRequest = serde_json::from_slice(&body).unwrap();
-    let user_id = req.user_id;
-    cache.write().await.entry(user_id).or_insert(Vec::new());
-    Ok(Response::new(Body::from("Created")))
+async fn create_room(
+    cache: web::Data<Mutex<Cache>>,
+    create_req: web::Json<CreateChatRequest>,
+) -> impl Responder {
+    let mut room = cache.lock().unwrap();
+    room.room_id = create_req.room_id;
+    HttpResponse::Ok().body("Created Room")
 }
 
-async fn join_chat_room(cache: Cache, req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    let body = body::to_bytes(req.into_body()).await.unwrap();
-    let req: JoinChatRequest = serde_json::from_slice(&body.slice(..)).unwrap();
+async fn list_rooms(cache: web::Data<Mutex<Cache>>) -> impl Responder {
+    let room_id = cache.lock().unwrap();
+    HttpResponse::Ok().body(room_id.room_id.to_string())
+}
 
-    if cache.read().await.contains_key(&req.room_id) {
-        return Ok::<_, Infallible>(Response::new(Body::from("Room does not exist")));
-    }
-    Ok::<_, Infallible>(Response::new(Body::from("Room exists")))
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    std::env::set_var("RUST_LOG", "debug");
+    env_logger::init();
+    let cache = web::Data::new(Mutex::new(Cache { room_id: 0 }));
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::clone(&cache))
+            .route("/create", web::post().to(create_room))
+            .route("/list", web::get().to(list_rooms))
+    })
+    .bind(("127.0.0.1", 3366))?
+    .run()
+    .await
 }
