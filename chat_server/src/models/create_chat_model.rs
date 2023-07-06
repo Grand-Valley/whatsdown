@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use super::*;
 
 #[derive(Deserialize)]
 pub struct CreateChatRequest {

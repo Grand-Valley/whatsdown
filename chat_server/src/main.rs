@@ -1,5 +1,5 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use std::sync::Mutex;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use std::sync::RwLock;
 
 mod models;
 use models::*;
@@ -9,34 +9,45 @@ use models::*;
 
 // type WorldHistory = Vec<Cache>;
 
+// QUES: use?
 pub struct Cache {
-    room_id: u64,
+    rooms: Vec<u64>,
 }
 
+#[post("/create")]
 async fn create_room(
-    cache: web::Data<Mutex<Cache>>,
+    cache: web::Data<RwLock<Cache>>,
     create_req: web::Json<CreateChatRequest>,
 ) -> impl Responder {
-    let mut room = cache.lock().unwrap();
-    room.room_id = create_req.room_id;
+    let mut wcache = cache.write().unwrap();
+    wcache.rooms.push(create_req.room_id);
     HttpResponse::Ok().body("Created Room")
 }
 
-async fn list_rooms(cache: web::Data<Mutex<Cache>>) -> impl Responder {
-    let room_id = cache.lock().unwrap();
-    HttpResponse::Ok().body(room_id.room_id.to_string())
+#[get("/list")]
+async fn list_rooms(cache: web::Data<RwLock<Cache>>) -> impl Responder {
+    let rcache = cache.read().unwrap();
+    HttpResponse::Ok().body(
+        rcache
+            .rooms
+            .iter()
+            .map(|room_id| format!("{}", room_id))
+            .collect::<Vec<String>>()
+            .join(","),
+    )
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
-    let cache = web::Data::new(Mutex::new(Cache { room_id: 0 }));
+    let cache = web::Data::new(RwLock::new(Cache { rooms: Vec::new() }));
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::clone(&cache))
-            .route("/create", web::post().to(create_room))
-            .route("/list", web::get().to(list_rooms))
+            .service(create_room)
+            .service(list_rooms)
     })
     .bind(("127.0.0.1", 3366))?
     .run()
